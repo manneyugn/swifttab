@@ -5,6 +5,15 @@
   "version": "0.1.0",
   "publisher": "your-publisher",
   "license": "MIT",
+  "icon": "images/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/manneyugn/swifttab.git"
+  },
+  "galleryBanner": {
+    "color": "#2563EB",
+    "theme": "dark"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },

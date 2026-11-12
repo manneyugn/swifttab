@@ -1,3 +1,5 @@
+<p align="center"><img src="images/logo-512.png" width="128" alt="SwiftTab logo"></p>
+
 # SwiftTab
 
 Inline code completion for VS Code that runs on **your own API key**, in the cloud or on your own server. No chat, no agents, no account. It just gives fast ghost-text suggestions as you type.
