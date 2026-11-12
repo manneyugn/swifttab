@@ -1,0 +1,211 @@
+{
+  "name": "byok-autocomplete",
+  "displayName": "BYOK Autocomplete",
+  "description": "Fast, heavy inline code completion powered by your own cloud API key (Codestral, DeepSeek, OpenAI, Anthropic, Gemini, OpenRouter, any OpenAI-compatible API). No chat, no agents, no account.",
+  "version": "0.1.0",
+  "publisher": "your-publisher",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "AI",
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "autocomplete",
+    "code completion",
+    "byok",
+    "codestral",
+    "fim",
+    "copilot alternative"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "byokComplete.toggle",
+        "title": "Toggle Autocomplete",
+        "category": "BYOK Autocomplete"
+      },
+      {
+        "command": "byokComplete.selectProvider",
+        "title": "Select Provider",
+        "category": "BYOK Autocomplete"
+      },
+      {
+        "command": "byokComplete.selectModel",
+        "title": "Select Model",
+        "category": "BYOK Autocomplete"
+      },
+      {
+        "command": "byokComplete.setApiKey",
+        "title": "Set API Key",
+        "category": "BYOK Autocomplete"
+      },
+      {
+        "command": "byokComplete.clearApiKey",
+        "title": "Clear API Key",
+        "category": "BYOK Autocomplete"
+      },
+      {
+        "command": "byokComplete.showLog",
+        "title": "Show Log",
+        "category": "BYOK Autocomplete"
+      },
+      {
+        "command": "byokComplete.statusMenu",
+        "title": "Status Menu",
+        "category": "BYOK Autocomplete"
+      }
+    ],
+    "configuration": {
+      "title": "BYOK Autocomplete",
+      "properties": {
+        "byokComplete.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show inline completions as you type."
+        },
+        "byokComplete.provider": {
+          "type": "string",
+          "default": "codestral",
+          "enum": [
+            "codestral",
+            "mistral",
+            "deepseek",
+            "openaiCompatible",
+            "openai",
+            "anthropic",
+            "gemini",
+            "openrouter"
+          ],
+          "enumDescriptions": [
+            "Mistral Codestral via codestral.mistral.ai (FIM, recommended)",
+            "Mistral via api.mistral.ai (FIM)",
+            "DeepSeek FIM beta endpoint (FIM)",
+            "Any OpenAI-compatible server (FIM via /completions, or chat)",
+            "OpenAI (chat models)",
+            "Anthropic Claude (chat models)",
+            "Google Gemini (chat models)",
+            "OpenRouter (chat models)"
+          ],
+          "description": "Which cloud API to use. FIM providers are faster and more accurate for completion."
+        },
+        "byokComplete.model": {
+          "type": "string",
+          "default": "",
+          "description": "Model ID. Leave empty to use the provider's default. Use the 'Select Model' command to pick from the provider's list."
+        },
+        "byokComplete.baseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Override the provider's base URL. Required for 'openaiCompatible' (e.g. https://api.groq.com/openai/v1)."
+        },
+        "byokComplete.openaiCompatible.mode": {
+          "type": "string",
+          "enum": [
+            "fim",
+            "chat"
+          ],
+          "default": "chat",
+          "description": "For 'openaiCompatible': 'fim' posts prompt+suffix to /completions; 'chat' uses /chat/completions."
+        },
+        "byokComplete.debounceMs": {
+          "type": "number",
+          "default": 200,
+          "minimum": 0,
+          "maximum": 2000,
+          "description": "Wait this long after you stop typing before requesting a completion."
+        },
+        "byokComplete.multiline": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "always",
+            "never"
+          ],
+          "default": "auto",
+          "description": "'auto' completes whole blocks on empty lines and after openers like '{' or ':', and single lines elsewhere."
+        },
+        "byokComplete.maxTokens": {
+          "type": "number",
+          "default": 256,
+          "minimum": 16,
+          "maximum": 2048,
+          "description": "Maximum tokens per completion."
+        },
+        "byokComplete.maxLines": {
+          "type": "number",
+          "default": 40,
+          "minimum": 1,
+          "description": "Maximum lines in a multi-line completion."
+        },
+        "byokComplete.temperature": {
+          "type": "number",
+          "default": 0.1,
+          "minimum": 0,
+          "maximum": 1
+        },
+        "byokComplete.maxPrefixChars": {
+          "type": "number",
+          "default": 8000,
+          "description": "Characters of code before the cursor sent as context."
+        },
+        "byokComplete.maxSuffixChars": {
+          "type": "number",
+          "default": 2000,
+          "description": "Characters of code after the cursor sent as context."
+        },
+        "byokComplete.crossFileContext": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include the most relevant snippets from other open files (similarity-ranked)."
+        },
+        "byokComplete.crossFileChars": {
+          "type": "number",
+          "default": 3000,
+          "description": "Character budget for cross-file snippets."
+        },
+        "byokComplete.timeoutMs": {
+          "type": "number",
+          "default": 8000,
+          "description": "Abort a request that takes longer than this."
+        },
+        "byokComplete.disabledLanguages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "plaintext",
+            "markdown",
+            "scminput"
+          ],
+          "description": "Language IDs where completion is off."
+        },
+        "byokComplete.extraBody": {
+          "type": "object",
+          "default": {},
+          "description": "Extra JSON merged into every request body (deep merge), e.g. {\"generationConfig\": {\"thinkingConfig\": {\"thinkingBudget\": 0}}} for Gemini."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p .",
+    "test": "npm run compile && node --test out/test/*.test.js",
+    "package": "vsce package --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^4.1.0",
+    "typescript": "^5.6.0"
+  }
+}
