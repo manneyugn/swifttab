@@ -1,34 +1,6 @@
 import * as vscode from 'vscode';
 import { topSnippets, Snippet } from './similarity';
 
-const HASH = new Set([
-  'python', 'shellscript', 'ruby', 'yaml', 'perl', 'r', 'dockerfile', 'makefile', 'toml', 'powershell',
-  'elixir', 'julia', 'coffeescript', 'nim', 'crystal', 'properties', 'ini',
-]);
-const DASH = new Set(['sql', 'lua', 'haskell', 'elm', 'ada', 'vhdl']);
-const PERCENT = new Set(['latex', 'tex', 'matlab', 'erlang', 'prolog']);
-const SEMI = new Set(['clojure', 'lisp', 'scheme', 'racket']);
-const HTMLISH = new Set(['html', 'xml', 'vue-html', 'svg', 'xsl']);
-
-export function commentLine(language: string, text: string): string {
-  if (HASH.has(language)) {
-    return `# ${text}`;
-  }
-  if (DASH.has(language)) {
-    return `-- ${text}`;
-  }
-  if (PERCENT.has(language)) {
-    return `% ${text}`;
-  }
-  if (SEMI.has(language)) {
-    return `; ${text}`;
-  }
-  if (HTMLISH.has(language)) {
-    return `<!-- ${text} -->`;
-  }
-  return `// ${text}`;
-}
-
 const FAMILIES: string[][] = [
   ['typescript', 'typescriptreact', 'javascript', 'javascriptreact', 'vue', 'svelte'],
   ['c', 'cpp', 'objective-c', 'objective-cpp', 'cuda-cpp'],
@@ -58,7 +30,15 @@ export class RecentDocs implements vscode.Disposable {
       this.order.length = Math.min(this.order.length, 30);
     };
     touch(vscode.window.activeTextEditor);
-    this.sub = vscode.window.onDidChangeActiveTextEditor(touch);
+    // Files you switch to *and* files you edit both count as "recent".
+    this.sub = vscode.Disposable.from(
+      vscode.window.onDidChangeActiveTextEditor(touch),
+      vscode.workspace.onDidChangeTextDocument((e) => {
+        if (e.contentChanges.length && this.order[0] !== e.document.uri.toString()) {
+          touch(vscode.window.visibleTextEditors.find((ed) => ed.document === e.document));
+        }
+      })
+    );
   }
 
   documents(exclude: vscode.Uri, language: string, max = 12): vscode.TextDocument[] {
@@ -93,6 +73,7 @@ export class RecentDocs implements vscode.Disposable {
 
 export interface EditorContext {
   relPath: string;
+  repoName: string;
   language: string;
   rawPrefix: string;
   suffix: string;
@@ -142,6 +123,7 @@ export function gatherContext(
 
   return {
     relPath,
+    repoName: vscode.workspace.getWorkspaceFolder(doc.uri)?.name ?? vscode.workspace.name ?? '',
     language: doc.languageId,
     rawPrefix,
     suffix: text.slice(offset, end),
@@ -150,23 +132,4 @@ export function gatherContext(
     offset,
     snippets,
   };
-}
-
-/** For FIM models: put file path and related snippets at the top of the prompt, as comments. */
-export function fimHeader(ctx: EditorContext): string {
-  const out: string[] = [];
-  for (const s of ctx.snippets) {
-    out.push(commentLine(ctx.language, `Path: ${s.path}`));
-    for (const l of s.text.split('\n')) {
-      out.push(commentLine(ctx.language, l));
-    }
-    out.push('');
-  }
-  out.push(commentLine(ctx.language, `Path: ${ctx.relPath}`));
-  return out.join('\n') + '\n';
-}
-
-/** For chat models: related snippets as fenced blocks. */
-export function chatCrossFile(ctx: EditorContext): string {
-  return ctx.snippets.map((s) => `${s.path}:\n\`\`\`\n${s.text}\n\`\`\``).join('\n\n');
 }

@@ -1,7 +1,7 @@
 {
-  "name": "byok-autocomplete",
-  "displayName": "BYOK Autocomplete",
-  "description": "Fast, heavy inline code completion powered by your own cloud API key (Codestral, DeepSeek, OpenAI, Anthropic, Gemini, OpenRouter, any OpenAI-compatible API). No chat, no agents, no account.",
+  "name": "swifttab",
+  "displayName": "SwiftTab",
+  "description": "Fast inline code completion powered by your own API key: Codestral, DeepSeek, Mercury, OpenAI, Azure, Anthropic, Gemini, Groq, Together, Fireworks, xAI, OpenRouter, Ollama, llama.cpp, vLLM and any OpenAI-compatible server. No chat, no agents, no account.",
   "version": "0.1.0",
   "publisher": "your-publisher",
   "license": "MIT",
@@ -28,101 +28,185 @@
   "contributes": {
     "commands": [
       {
-        "command": "byokComplete.toggle",
+        "command": "swiftTab.toggle",
         "title": "Toggle Autocomplete",
-        "category": "BYOK Autocomplete"
+        "category": "SwiftTab"
       },
       {
-        "command": "byokComplete.selectProvider",
+        "command": "swiftTab.selectProvider",
         "title": "Select Provider",
-        "category": "BYOK Autocomplete"
+        "category": "SwiftTab"
       },
       {
-        "command": "byokComplete.selectModel",
+        "command": "swiftTab.selectModel",
         "title": "Select Model",
-        "category": "BYOK Autocomplete"
+        "category": "SwiftTab"
       },
       {
-        "command": "byokComplete.setApiKey",
+        "command": "swiftTab.selectMode",
+        "title": "Select Mode (FIM / Chat)",
+        "category": "SwiftTab"
+      },
+      {
+        "command": "swiftTab.setApiKey",
         "title": "Set API Key",
-        "category": "BYOK Autocomplete"
+        "category": "SwiftTab"
       },
       {
-        "command": "byokComplete.clearApiKey",
+        "command": "swiftTab.clearApiKey",
         "title": "Clear API Key",
-        "category": "BYOK Autocomplete"
+        "category": "SwiftTab"
       },
       {
-        "command": "byokComplete.showLog",
+        "command": "swiftTab.showLog",
         "title": "Show Log",
-        "category": "BYOK Autocomplete"
+        "category": "SwiftTab"
       },
       {
-        "command": "byokComplete.statusMenu",
+        "command": "swiftTab.statusMenu",
         "title": "Status Menu",
-        "category": "BYOK Autocomplete"
+        "category": "SwiftTab"
       }
     ],
     "configuration": {
-      "title": "BYOK Autocomplete",
+      "title": "SwiftTab",
       "properties": {
-        "byokComplete.enabled": {
+        "swiftTab.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Show inline completions as you type."
+          "description": "Show inline completions as you type.",
+          "order": 0
         },
-        "byokComplete.provider": {
+        "swiftTab.provider": {
           "type": "string",
           "default": "codestral",
           "enum": [
             "codestral",
             "mistral",
             "deepseek",
-            "openaiCompatible",
+            "inception",
             "openai",
+            "azure",
             "anthropic",
             "gemini",
-            "openrouter"
+            "openrouter",
+            "groq",
+            "together",
+            "fireworks",
+            "deepinfra",
+            "xai",
+            "cerebras",
+            "huggingface",
+            "qwen",
+            "moonshot",
+            "zai",
+            "ollama",
+            "llamacpp",
+            "lmstudio",
+            "openaiCompatible"
           ],
           "enumDescriptions": [
             "Mistral Codestral via codestral.mistral.ai (FIM, recommended)",
             "Mistral via api.mistral.ai (FIM)",
             "DeepSeek FIM beta endpoint (FIM)",
-            "Any OpenAI-compatible server (FIM via /completions, or chat)",
-            "OpenAI (chat models)",
-            "Anthropic Claude (chat models)",
-            "Google Gemini (chat models)",
-            "OpenRouter (chat models)"
+            "Inception Labs Mercury Coder (FIM)",
+            "OpenAI (chat)",
+            "Azure OpenAI / Azure AI Foundry (chat) — set baseUrl to https://RESOURCE.openai.azure.com/openai/v1",
+            "Anthropic Claude (chat)",
+            "Google Gemini (chat)",
+            "OpenRouter (chat)",
+            "Groq (chat)",
+            "Together AI (chat, or FIM with open coder models)",
+            "Fireworks AI (chat, or FIM with open coder models)",
+            "DeepInfra (chat, or FIM with open coder models)",
+            "xAI Grok (chat)",
+            "Cerebras (chat)",
+            "Hugging Face Inference Providers (chat)",
+            "Alibaba Qwen / DashScope international (chat, or FIM with Qwen-Coder)",
+            "Moonshot Kimi (chat)",
+            "Z.ai GLM (chat)",
+            "Ollama on localhost:11434 (FIM, no key)",
+            "llama.cpp server on localhost:8080 via /infill (FIM, no key)",
+            "LM Studio on localhost:1234 (FIM or chat, no key)",
+            "Any OpenAI-compatible server: vLLM, LiteLLM, SGLang, TGI, gateways (set baseUrl)"
           ],
-          "description": "Which cloud API to use. FIM providers are faster and more accurate for completion."
+          "description": "Which API serves completions. FIM providers (and FIM mode) are faster and more accurate for completion.",
+          "order": 1
         },
-        "byokComplete.model": {
+        "swiftTab.model": {
           "type": "string",
           "default": "",
-          "description": "Model ID. Leave empty to use the provider's default. Use the 'Select Model' command to pick from the provider's list."
+          "description": "Model ID. Leave empty to use the provider's default. Use the 'Select Model' command to pick from the provider's list.",
+          "order": 2
         },
-        "byokComplete.baseUrl": {
+        "swiftTab.baseUrl": {
           "type": "string",
           "default": "",
-          "description": "Override the provider's base URL. Required for 'openaiCompatible' (e.g. https://api.groq.com/openai/v1)."
+          "description": "Override the provider base URL. Required for openaiCompatible and azure; use it to point Ollama / llama.cpp / LM Studio at another host.",
+          "order": 3
         },
-        "byokComplete.openaiCompatible.mode": {
+        "swiftTab.mode": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "fim",
+            "chat"
+          ],
+          "default": "auto",
+          "enumDescriptions": [
+            "Provider default (FIM where supported)",
+            "Fill-in-the-middle: code before and after the cursor, fastest and most accurate",
+            "Chat: instruction model prompted to act as a completion engine"
+          ],
+          "description": "How completions are requested. Ignored if the provider does not support the chosen mode.",
+          "order": 4
+        },
+        "swiftTab.fimTemplate": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "suffix",
+            "qwen",
+            "starcoder",
+            "codellama",
+            "deepseek",
+            "codestral",
+            "codegemma"
+          ],
+          "default": "auto",
+          "enumDescriptions": [
+            "Guess from the model name; otherwise send a suffix field",
+            "Send prompt + suffix and let the server apply the template (DeepSeek, Ollama, llama.cpp)",
+            "Qwen2.5/Qwen3-Coder <|fim_prefix|> with repo-level context",
+            "StarCoder / StarCoder2 / Granite Code <fim_prefix> with repo-level context",
+            "Code Llama <PRE> <SUF> <MID>",
+            "DeepSeek-Coder <｜fim▁begin｜>",
+            "Codestral / Mistral [SUFFIX][PREFIX]",
+            "CodeGemma <|fim_prefix|>"
+          ],
+          "markdownDescription": "FIM prompt format for OpenAI-style `/completions` servers. Servers like vLLM, Together and Fireworks reject a `suffix` field, so the raw prompt must be built with the model template.",
+          "order": 5
+        },
+        "swiftTab.openaiCompatible.mode": {
           "type": "string",
           "enum": [
             "fim",
             "chat"
           ],
           "default": "chat",
-          "description": "For 'openaiCompatible': 'fim' posts prompt+suffix to /completions; 'chat' uses /chat/completions."
+          "description": "For 'openaiCompatible': 'fim' posts prompt+suffix to /completions; 'chat' uses /chat/completions.",
+          "markdownDeprecationMessage": "Use `swiftTab.mode` instead.",
+          "order": 6
         },
-        "byokComplete.debounceMs": {
+        "swiftTab.debounceMs": {
           "type": "number",
           "default": 200,
           "minimum": 0,
           "maximum": 2000,
-          "description": "Wait this long after you stop typing before requesting a completion."
+          "description": "Wait this long after you stop typing before requesting a completion. Typing that matches a request already in flight reuses it, so low values are cheap.",
+          "order": 7
         },
-        "byokComplete.multiline": {
+        "swiftTab.multiline": {
           "type": "string",
           "enum": [
             "auto",
@@ -130,53 +214,68 @@
             "never"
           ],
           "default": "auto",
-          "description": "'auto' completes whole blocks on empty lines and after openers like '{' or ':', and single lines elsewhere."
+          "description": "'auto' completes whole blocks on empty lines and after openers like '{' or ':', and single lines elsewhere.",
+          "order": 8
         },
-        "byokComplete.maxTokens": {
+        "swiftTab.suggestAfterAccept": {
+          "type": "boolean",
+          "default": true,
+          "description": "After you accept a suggestion, immediately request the next one (multi-line when the line is finished).",
+          "order": 9
+        },
+        "swiftTab.maxTokens": {
           "type": "number",
           "default": 256,
           "minimum": 16,
           "maximum": 2048,
-          "description": "Maximum tokens per completion."
+          "description": "Maximum tokens per completion.",
+          "order": 10
         },
-        "byokComplete.maxLines": {
+        "swiftTab.maxLines": {
           "type": "number",
           "default": 40,
           "minimum": 1,
-          "description": "Maximum lines in a multi-line completion."
+          "description": "Maximum lines in a multi-line completion.",
+          "order": 11
         },
-        "byokComplete.temperature": {
+        "swiftTab.temperature": {
           "type": "number",
           "default": 0.1,
           "minimum": 0,
-          "maximum": 1
+          "maximum": 1,
+          "order": 12
         },
-        "byokComplete.maxPrefixChars": {
+        "swiftTab.maxPrefixChars": {
           "type": "number",
           "default": 8000,
-          "description": "Characters of code before the cursor sent as context."
+          "description": "Characters of code before the cursor sent as context.",
+          "order": 13
         },
-        "byokComplete.maxSuffixChars": {
+        "swiftTab.maxSuffixChars": {
           "type": "number",
           "default": 2000,
-          "description": "Characters of code after the cursor sent as context."
+          "description": "Characters of code after the cursor sent as context.",
+          "order": 14
         },
-        "byokComplete.crossFileContext": {
+        "swiftTab.crossFileContext": {
           "type": "boolean",
           "default": true,
-          "description": "Include the most relevant snippets from other open files (similarity-ranked)."
+          "description": "Include the most relevant snippets from other open files (similarity-ranked).",
+          "order": 15
         },
-        "byokComplete.crossFileChars": {
+        "swiftTab.crossFileChars": {
           "type": "number",
           "default": 3000,
-          "description": "Character budget for cross-file snippets."
+          "description": "Character budget for cross-file snippets.",
+          "order": 16
         },
-        "byokComplete.timeoutMs": {
+        "swiftTab.timeoutMs": {
           "type": "number",
           "default": 8000,
-          "description": "Abort a request that takes longer than this."
+          "description": "Abort a request that takes longer than this.",
+          "order": 17
         },
-        "byokComplete.disabledLanguages": {
+        "swiftTab.disabledLanguages": {
           "type": "array",
           "items": {
             "type": "string"
@@ -186,12 +285,23 @@
             "markdown",
             "scminput"
           ],
-          "description": "Language IDs where completion is off."
+          "description": "Language IDs where completion is off.",
+          "order": 18
         },
-        "byokComplete.extraBody": {
+        "swiftTab.extraBody": {
           "type": "object",
           "default": {},
-          "description": "Extra JSON merged into every request body (deep merge), e.g. {\"generationConfig\": {\"thinkingConfig\": {\"thinkingBudget\": 0}}} for Gemini."
+          "markdownDescription": "Extra JSON deep-merged into every request body. Examples: Qwen3 / vLLM `{\"chat_template_kwargs\": {\"enable_thinking\": false}}`; Gemini `{\"generationConfig\": {\"thinkingConfig\": {\"thinkingBudget\": 0}}}`; OpenAI reasoning models `{\"reasoning_effort\": \"minimal\"}`.",
+          "order": 19
+        },
+        "swiftTab.extraHeaders": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "description": "Extra HTTP headers sent with every request (e.g. for gateways or proxies). Do not put API keys here; use the Set API Key command.",
+          "order": 20
         }
       }
     }
@@ -200,7 +310,8 @@
     "compile": "tsc -p .",
     "watch": "tsc -watch -p .",
     "test": "npm run compile && node --test out/test/*.test.js",
-    "package": "vsce package --allow-missing-repository"
+    "package": "vsce package --allow-missing-repository",
+    "eval": "npm run compile && node out/eval/run.js"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

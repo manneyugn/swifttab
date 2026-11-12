@@ -7,7 +7,7 @@ import { ProviderId } from './providers/types';
 import { Status } from './statusBar';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  const log = vscode.window.createOutputChannel('BYOK Autocomplete', { log: true });
+  const log = vscode.window.createOutputChannel('SwiftTab', { log: true });
   const keys = new KeyStore(context.secrets);
   const status = new Status();
   const recent = new RecentDocs();
@@ -17,19 +17,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const setApiKey = async (id?: ProviderId): Promise<boolean> => {
     const provider = id ?? readSettings().provider;
     const spec = PROVIDERS[provider];
+    const where = spec.keyUrl ? `Get a key at ${spec.keyUrl}. ` : '';
     const key = await vscode.window.showInputBox({
       title: `API key for ${spec.label}`,
-      prompt: spec.keyUrl ? `Get a key at ${spec.keyUrl}. Stored in your OS keychain.` : 'Stored in your OS keychain.',
+      prompt: spec.optionalKey
+        ? `${where}Leave empty if the server needs no key. Stored in your OS keychain.`
+        : `${where}Stored in your OS keychain.`,
       password: true,
       ignoreFocusOut: true,
-      validateInput: (v) => (v.trim() ? undefined : 'Key cannot be empty'),
+      validateInput: (v) => (v.trim() || spec.optionalKey ? undefined : 'Key cannot be empty'),
     });
-    if (!key) {
+    if (key === undefined) {
       return false;
     }
-    await keys.set(provider, key.trim());
+    if (key.trim()) {
+      await keys.set(provider, key.trim());
+    } else {
+      await keys.delete(provider);
+    }
     await inline.reload();
-    vscode.window.showInformationMessage(`BYOK Autocomplete: key saved for ${provider}.`);
+    vscode.window.showInformationMessage(
+      `SwiftTab: ${key.trim() ? 'key saved' : 'no key'} for ${provider}.`
+    );
     return true;
   };
 
@@ -81,6 +90,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await update('model', model);
   };
 
+  const selectMode = async (id?: ProviderId): Promise<void> => {
+    const spec = PROVIDERS[id ?? readSettings().provider];
+    const items = [
+      { label: 'Automatic', description: `provider default (${spec.defaultMode})`, value: 'auto' },
+      ...(spec.modes.includes('fim')
+        ? [{ label: 'FIM (fill-in-the-middle)', description: 'code-completion models: faster, cheaper', value: 'fim' }]
+        : []),
+      ...(spec.modes.includes('chat')
+        ? [{ label: 'Chat', description: 'instruction models prompted to complete code', value: 'chat' }]
+        : []),
+    ];
+    const pick = await vscode.window.showQuickPick(items, { title: `Completion mode for ${spec.label}` });
+    if (pick) {
+      await update('mode', pick.value);
+    }
+  };
+
   const selectProvider = async (): Promise<void> => {
     const current = readSettings().provider;
     const items = await Promise.all(
@@ -99,18 +125,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const spec = PROVIDERS[pick.id];
     await update('provider', spec.id);
     await update('model', '');
-    if (spec.needsBaseUrl) {
+    if (spec.needsBaseUrl || spec.optionalKey) {
+      // Self-hosted servers: ask where it runs (prefilled with the usual local address).
       const url = await vscode.window.showInputBox({
-        title: 'Base URL of the OpenAI-compatible API',
-        placeHolder: 'https://api.example.com/v1',
-        value: readSettings().baseUrl,
+        title: `Base URL for ${spec.label}`,
+        placeHolder: spec.needsBaseUrl ?? spec.baseUrl,
+        value: spec.needsBaseUrl ? readSettings().baseUrl : spec.baseUrl,
         ignoreFocusOut: true,
       });
-      if (url) {
-        await update('baseUrl', url.trim());
+      if (url === undefined && spec.needsBaseUrl) {
+        return;
       }
+      await update('baseUrl', url?.trim() === spec.baseUrl ? '' : (url?.trim() ?? ''));
     } else {
       await update('baseUrl', '');
+    }
+    if (spec.modes.length > 1) {
+      await selectMode(spec.id);
     }
     if (!(await keys.get(spec.id)) && !(await setApiKey(spec.id))) {
       return;
@@ -136,24 +167,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         inline.reload();
       }
     }),
-    vscode.commands.registerCommand('byokComplete.toggle', async () => {
+    vscode.commands.registerCommand('swiftTab.toggle', async () => {
       await update('enabled', !readSettings().enabled);
     }),
-    vscode.commands.registerCommand('byokComplete.setApiKey', () => setApiKey()),
-    vscode.commands.registerCommand('byokComplete.clearApiKey', async () => {
+    vscode.commands.registerCommand('swiftTab.setApiKey', () => setApiKey()),
+    vscode.commands.registerCommand('swiftTab.clearApiKey', async () => {
       const id = readSettings().provider;
       await keys.delete(id);
       await inline.reload();
-      vscode.window.showInformationMessage(`BYOK Autocomplete: key removed for ${id}.`);
+      vscode.window.showInformationMessage(`SwiftTab: key removed for ${id}.`);
     }),
-    vscode.commands.registerCommand('byokComplete.selectProvider', selectProvider),
-    vscode.commands.registerCommand('byokComplete.selectModel', selectModel),
-    vscode.commands.registerCommand('byokComplete.showLog', () => log.show()),
-    vscode.commands.registerCommand('byokComplete.accepted', () => {
+    vscode.commands.registerCommand('swiftTab.selectProvider', selectProvider),
+    vscode.commands.registerCommand('swiftTab.selectModel', selectModel),
+    vscode.commands.registerCommand('swiftTab.selectMode', () => selectMode()),
+    vscode.commands.registerCommand('swiftTab.showLog', () => log.show()),
+    vscode.commands.registerCommand('swiftTab.accepted', () => {
       status.accepted++;
       status.render();
+      if (readSettings().suggestAfterAccept) {
+        // Ask for the next suggestion right away instead of waiting for a keystroke.
+        inline.onAccepted();
+        void vscode.commands.executeCommand('editor.action.inlineSuggest.trigger');
+      }
     }),
-    vscode.commands.registerCommand('byokComplete.statusMenu', async () => {
+    vscode.commands.registerCommand('swiftTab.statusMenu', async () => {
       const s = readSettings();
       const actions: (vscode.QuickPickItem & { run: () => unknown })[] = [
         {
@@ -162,6 +199,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         },
         { label: '$(server) Select provider', description: s.provider, run: selectProvider },
         { label: '$(symbol-class) Select model', description: s.model, run: selectModel },
+        ...(s.spec.modes.length > 1
+          ? [{ label: '$(settings) Select mode', description: s.mode, run: () => selectMode() }]
+          : []),
         { label: '$(key) Set API key', description: s.provider, run: () => setApiKey() },
         { label: '$(output) Show log', run: () => log.show() },
         {
@@ -169,16 +209,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           run: () => vscode.commands.executeCommand('workbench.action.openSettings', `@ext:${context.extension.id}`),
         },
       ];
-      const pick = await vscode.window.showQuickPick(actions, { title: 'BYOK Autocomplete' });
+      const pick = await vscode.window.showQuickPick(actions, { title: 'SwiftTab' });
       await pick?.run();
     })
   );
 
   // First run: guide the user to a key (once; the status bar shows a key icon afterwards).
-  if (!context.globalState.get('welcomed') && !(await keys.get(readSettings().provider))) {
+  const first = readSettings();
+  if (!context.globalState.get('welcomed') && !first.spec.optionalKey && !(await keys.get(first.provider))) {
     void context.globalState.update('welcomed', true);
     void vscode.window
-      .showInformationMessage('BYOK Autocomplete needs an API key from your model provider.', 'Choose provider', 'Later')
+      .showInformationMessage('SwiftTab needs an API key from your model provider.', 'Choose provider', 'Later')
       .then((choice) => (choice === 'Choose provider' ? selectProvider() : undefined));
   }
 }

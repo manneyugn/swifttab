@@ -1,3 +1,29 @@
+import type { AuthStyle } from './types';
+
+/** Builds auth headers for the provider's style; no header at all when there is no key. */
+export function authHeaders(style: AuthStyle, key: string, extra: Record<string, string> = {}): Record<string, string> {
+  const h: Record<string, string> = {};
+  if (key) {
+    switch (style) {
+      case 'bearer':
+        h.Authorization = `Bearer ${key}`;
+        break;
+      case 'api-key':
+        h['api-key'] = key;
+        break;
+      case 'x-api-key':
+        h['x-api-key'] = key;
+        break;
+      case 'goog':
+        h['x-goog-api-key'] = key;
+        break;
+      case 'none':
+        break;
+    }
+  }
+  return { ...h, ...extra };
+}
+
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);

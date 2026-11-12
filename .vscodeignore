@@ -4,3 +4,4 @@ out/test/**
 tsconfig.json
 node_modules/**
 .vscode/**
+out/eval/**

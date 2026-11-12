@@ -12,12 +12,13 @@ export class Status implements vscode.Disposable {
   shown = 0;
   accepted = 0;
   cacheHits = 0;
+  reused = 0;
   inputTokens = 0;
   outputTokens = 0;
   private latencies: number[] = [];
 
   constructor() {
-    this.item.command = 'byokComplete.statusMenu';
+    this.item.command = 'swiftTab.statusMenu';
     this.item.show();
   }
 
@@ -73,16 +74,16 @@ export class Status implements vscode.Disposable {
     const sorted = [...this.latencies].sort((a, b) => a - b);
     const p50 = sorted.length ? sorted[Math.floor(sorted.length / 2)] : undefined;
     const md = new vscode.MarkdownString(undefined, true);
-    md.appendMarkdown(`**BYOK Autocomplete** — ${s.enabled ? 'on' : 'off'}\n\n`);
-    md.appendMarkdown(`Provider: \`${s.provider}\` · Model: \`${s.model || '(not set)'}\`\n\n`);
+    md.appendMarkdown(`**SwiftTab** — ${s.enabled ? 'on' : 'off'}\n\n`);
+    md.appendMarkdown(`Provider: \`${s.provider}\` · Mode: \`${s.mode}\` · Model: \`${s.model || '(not set)'}\`\n\n`);
     if (!this.hasKey) {
-      md.appendMarkdown('$(key) No API key set — click to set one.\n\n');
+      md.appendMarkdown('$(key) No API key set. Click to set one.\n\n');
     }
     if (this.error) {
       md.appendMarkdown(`$(warning) Last error: ${this.error}\n\n`);
     }
     md.appendMarkdown(
-      `Requests ${this.requests} · shown ${this.shown} · accepted ${this.accepted} · cache hits ${this.cacheHits}\n\n`
+      `Requests ${this.requests} · shown ${this.shown} · accepted ${this.accepted} · cache hits ${this.cacheHits} · reused streams ${this.reused}\n\n`
     );
     md.appendMarkdown(
       `Tokens in ${this.inputTokens.toLocaleString()} · out ${this.outputTokens.toLocaleString()}` +

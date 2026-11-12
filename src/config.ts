@@ -1,15 +1,19 @@
 import * as vscode from 'vscode';
-import { ProviderId } from './providers/types';
-import { PROVIDERS } from './providers';
+import { FimTemplate, ProviderId, ProviderMode, ProviderSpec } from './providers/types';
+import { PROVIDERS, resolveFimTemplate, resolveMode } from './providers';
 
-export const SECTION = 'byokComplete';
+export const SECTION = 'swiftTab';
 
 export interface Settings {
   enabled: boolean;
   provider: ProviderId;
+  spec: ProviderSpec;
   model: string;
   baseUrl: string;
-  compatMode: 'fim' | 'chat';
+  /** Resolved mode (setting + what the provider supports). */
+  mode: ProviderMode;
+  fimTemplate: FimTemplate;
+  extraHeaders: Record<string, string>;
   debounceMs: number;
   multiline: 'auto' | 'always' | 'never';
   maxTokens: number;
@@ -21,6 +25,7 @@ export interface Settings {
   crossFileChars: number;
   timeoutMs: number;
   disabledLanguages: string[];
+  suggestAfterAccept: boolean;
   extraBody: Record<string, unknown>;
 }
 
@@ -28,12 +33,21 @@ export function readSettings(): Settings {
   const c = vscode.workspace.getConfiguration(SECTION);
   const provider = c.get<ProviderId>('provider', 'codestral');
   const spec = PROVIDERS[provider] ?? PROVIDERS.codestral;
+  const model = c.get<string>('model', '').trim() || spec.defaultModel;
+  let wanted = c.get<'auto' | ProviderMode>('mode', 'auto');
+  if (wanted === 'auto' && spec.id === 'openaiCompatible') {
+    // Older setting, still honoured.
+    wanted = c.get<ProviderMode>('openaiCompatible.mode', 'chat');
+  }
   return {
     enabled: c.get('enabled', true),
     provider: spec.id,
-    model: c.get<string>('model', '').trim() || spec.defaultModel,
+    spec,
+    model,
     baseUrl: c.get<string>('baseUrl', '').trim() || spec.baseUrl,
-    compatMode: c.get('openaiCompatible.mode', 'chat'),
+    mode: resolveMode(spec, wanted),
+    fimTemplate: resolveFimTemplate(spec, c.get<'auto' | FimTemplate>('fimTemplate', 'auto'), model),
+    extraHeaders: c.get<Record<string, string>>('extraHeaders', {}) ?? {},
     debounceMs: c.get('debounceMs', 200),
     multiline: c.get('multiline', 'auto'),
     maxTokens: c.get('maxTokens', 256),
@@ -45,6 +59,7 @@ export function readSettings(): Settings {
     crossFileChars: c.get('crossFileChars', 3000),
     timeoutMs: c.get('timeoutMs', 8000),
     disabledLanguages: c.get<string[]>('disabledLanguages', []),
+    suggestAfterAccept: c.get('suggestAfterAccept', true),
     extraBody: c.get<Record<string, unknown>>('extraBody', {}) ?? {},
   };
 }

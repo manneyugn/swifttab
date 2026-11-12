@@ -20,10 +20,16 @@ export function indentWidth(line: string): number {
   return w;
 }
 
+/**
+ * Copilot's mid-line rule: only complete when the rest of the line is closing brackets/quotes,
+ * optionally followed by one of `: { ; ,`. Anything else (a word, an operator) means the user
+ * is editing inside existing code, where suggestions are almost always noise.
+ */
+const MIDLINE_OK = /^\s*[)>}\]"'`]*\s*[:{;,]?\s*$/;
+
 /** Whether to ask for a completion at all at this cursor position. */
 export function shouldSkip(linePrefix: string, lineSuffix: string): boolean {
-  // Cursor in the middle of a word: suggestions there are almost always noise.
-  if (/^[\w$]/.test(lineSuffix)) {
+  if (!MIDLINE_OK.test(lineSuffix)) {
     return true;
   }
   // Very long lines (minified code, data) are not worth a request.
@@ -44,6 +50,10 @@ export function decideMultiline(mode: 'auto' | 'always' | 'never', linePrefix: s
   if (!restIsClosers) {
     return false;
   }
+  // Inside a call or index, e.g. `foo(█)`: complete the arguments, not a block (as Cody does).
+  if (/[([]\s*$/.test(linePrefix) && /^\s*[)\]]/.test(lineSuffix)) {
+    return false;
+  }
   return linePrefix.trim() === '' || OPENER.test(linePrefix.trimEnd());
 }
 
@@ -57,6 +67,8 @@ export interface PostOptions {
   multiline: boolean;
   maxLines: number;
   chatMode: boolean;
+  /** The line above the cursor line, to reject completions that just repeat it. */
+  prevLine?: string;
 }
 
 export interface PostResult {
@@ -93,6 +105,30 @@ function removeEcho(text: string, linePrefix: string): string {
   return text;
 }
 
+/**
+ * FIM models (Qwen especially) like to produce whole lines. Fix up the start of the output so it
+ * continues the cursor line exactly:
+ * - the model re-wrote the cursor line: `\t\treturn nil, err` after `\t\treturn ` -> `nil, err`
+ * - doubled space: ` value` after `x = ` -> `value`
+ * - missing newline after an opener: `    return x;` after `{` -> `\n    return x;`
+ */
+export function normalizeStart(text: string, linePrefix: string, multiline: boolean): string {
+  const lp = linePrefix.trimStart();
+  if (lp.length >= 3) {
+    const first = text.trimStart();
+    if (first.startsWith(lp) && !text.startsWith('\n')) {
+      text = first.slice(lp.length);
+    }
+  }
+  if (lp && /[ \t]$/.test(linePrefix)) {
+    text = text.replace(/^[ \t]+/, '');
+  }
+  if (multiline && lp && /^[ \t]+\S/.test(text) && indentWidth(text) > indentWidth(linePrefix)) {
+    text = '\n' + text;
+  }
+  return text;
+}
+
 /** Longest k so that the end of `text` equals the first k chars of `rest`. */
 function overlapWithRest(text: string, rest: string): number {
   const max = Math.min(text.length, rest.length);
@@ -114,9 +150,16 @@ export function postProcess(raw: string, opts: PostOptions): PostResult {
   let truncated = false;
 
   if (opts.chatMode) {
+    // Reasoning models: drop finished <think> blocks; an unfinished one means nothing usable yet.
+    text = text.replace(/<think>[\s\S]*?<\/think>\s*/g, '');
+    const open = text.indexOf('<think>');
+    if (open >= 0) {
+      text = text.slice(0, open);
+    }
     text = stripFences(text).split(CURSOR_MARK).join('');
     text = removeEcho(text, opts.linePrefix);
   }
+  text = normalizeStart(text, opts.linePrefix, opts.multiline);
 
   let lines = text.split('\n');
 
@@ -164,6 +207,12 @@ export function postProcess(raw: string, opts: PostOptions): PostResult {
           break;
         }
       }
+      // Degenerate loop: the same line three times in a row.
+      if (kept.length >= 2 && line === kept[kept.length - 1] && line === kept[kept.length - 2]) {
+        kept.splice(kept.length - 1, 1);
+        truncated = true;
+        break;
+      }
       if (kept.length >= opts.maxLines) {
         truncated = true;
         break;
@@ -184,8 +233,19 @@ export function postProcess(raw: string, opts: PostOptions): PostResult {
     }
   }
 
-  if (text.trim() === '' || opts.suffix.startsWith(text)) {
+  if (text.trim() === '' || opts.suffix.startsWith(text) || isRepetitive(text)) {
+    return { text: '', truncated };
+  }
+  // The model just copied the line above (a common failure on empty lines).
+  const firstLine = (opts.linePrefix + text.split('\n')[0]).trim();
+  if (opts.prevLine !== undefined && firstLine.length > 3 && firstLine === opts.prevLine.trim() && !text.includes('\n')) {
     return { text: '', truncated };
   }
   return { text, truncated };
+}
+
+/** Tabby's repetition check: a short pattern repeated many times at the end. */
+export function isRepetitive(text: string): boolean {
+  const tail = text.slice(-400);
+  return /(.{3,}?)\1{5,}$/s.test(tail) || /(.{10,}?)\1{3,}$/s.test(tail);
 }

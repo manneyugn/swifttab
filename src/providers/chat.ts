@@ -1,5 +1,6 @@
-import { CompletionProvider, CompletionRequest, ProviderConfig, ProviderId, Usage } from './types';
-import { deepMerge, getJson, joinUrl, parseJson, postStream, sseData } from './http';
+import { CompletionProvider, CompletionRequest, ProviderConfig, ProviderSpec, Usage } from './types';
+import { authHeaders, deepMerge, getJson, joinUrl, parseJson, postStream, sseData } from './http';
+import { listOpenAIModels } from './fim';
 
 export const CURSOR = '<CURSOR>';
 
@@ -16,31 +17,43 @@ export function buildChatPrompt(req: CompletionRequest): { system: string; user:
   ].join('\n');
 
   const parts: string[] = [];
-  if (req.crossFile) {
-    parts.push(`Relevant code from other open files:\n${req.crossFile}`);
+  if (req.snippets.length) {
+    const files = req.snippets.map((s) => `${s.path}:\n\`\`\`\n${s.text}\n\`\`\``).join('\n\n');
+    parts.push(`Relevant code from other files:\n${files}`);
   }
   parts.push(`File: ${req.filePath} (${req.language})\n\n${req.prefix}${CURSOR}${req.suffix}`);
   return { system, user: parts.join('\n\n') };
 }
 
-/** OpenAI-style /chat/completions (OpenAI, OpenRouter, and OpenAI-compatible servers). */
+/** OpenAI-style /chat/completions: OpenAI, Azure, Mistral, Groq, xAI, OpenRouter and every compatible server. */
 export class OpenAIChatProvider implements CompletionProvider {
   readonly mode = 'chat' as const;
+  readonly id;
 
-  constructor(readonly id: ProviderId, private readonly cfg: ProviderConfig) {}
+  constructor(private readonly spec: ProviderSpec, private readonly cfg: ProviderConfig) {
+    this.id = spec.id;
+  }
 
   private get headers(): Record<string, string> {
-    const h: Record<string, string> = { Authorization: `Bearer ${this.cfg.apiKey}` };
+    const extra: Record<string, string> = {};
     if (this.id === 'openrouter') {
-      h['X-Title'] = 'BYOK Autocomplete';
+      extra['X-Title'] = 'SwiftTab';
     }
-    return h;
+    return authHeaders(this.spec.auth ?? 'bearer', this.cfg.apiKey, { ...extra, ...this.cfg.extraHeaders });
+  }
+
+  /** Mistral's base URL has no /v1; everyone else's does. */
+  private url(path: string): string {
+    return joinUrl(this.cfg.baseUrl, this.spec.kind === 'mistral' ? `v1/${path}` : path);
   }
 
   async *stream(req: CompletionRequest, onUsage: (u: Usage) => void): AsyncGenerator<string> {
     const { system, user } = buildChatPrompt(req);
     // OpenAI's own API wants max_completion_tokens; most compatible servers still use max_tokens.
-    const limit = this.id === 'openai' ? { max_completion_tokens: req.maxTokens } : { max_tokens: req.maxTokens };
+    const limit =
+      this.id === 'openai' || this.id === 'azure'
+        ? { max_completion_tokens: req.maxTokens }
+        : { max_tokens: req.maxTokens };
     const body = deepMerge(
       {
         model: req.model,
@@ -55,9 +68,12 @@ export class OpenAIChatProvider implements CompletionProvider {
       },
       this.cfg.extraBody
     );
-    const res = await postStream(joinUrl(this.cfg.baseUrl, 'chat/completions'), this.headers, body, req.signal);
+    const res = await postStream(this.url('chat/completions'), this.headers, body, req.signal);
     for await (const data of sseData(res)) {
       const json = parseJson(data);
+      if (json?.error) {
+        throw new Error(json.error.message ?? JSON.stringify(json.error));
+      }
       if (json?.usage) {
         onUsage({ inputTokens: json.usage.prompt_tokens ?? 0, outputTokens: json.usage.completion_tokens ?? 0 });
       }
@@ -68,9 +84,8 @@ export class OpenAIChatProvider implements CompletionProvider {
     }
   }
 
-  async listModels(signal: AbortSignal): Promise<string[]> {
-    const json = await getJson<any>(joinUrl(this.cfg.baseUrl, 'models'), this.headers, signal);
-    return (json.data ?? []).map((m: any) => String(m.id));
+  listModels(signal: AbortSignal): Promise<string[]> {
+    return listOpenAIModels(this.spec.kind === 'mistral' ? joinUrl(this.cfg.baseUrl, 'v1') : this.cfg.baseUrl, this.headers, signal);
   }
 }
 
@@ -81,7 +96,7 @@ export class AnthropicProvider implements CompletionProvider {
   constructor(private readonly cfg: ProviderConfig) {}
 
   private get headers(): Record<string, string> {
-    return { 'x-api-key': this.cfg.apiKey, 'anthropic-version': '2023-06-01' };
+    return authHeaders('x-api-key', this.cfg.apiKey, { 'anthropic-version': '2023-06-01', ...this.cfg.extraHeaders });
   }
 
   async *stream(req: CompletionRequest, onUsage: (u: Usage) => void): AsyncGenerator<string> {
@@ -129,7 +144,7 @@ export class GeminiProvider implements CompletionProvider {
   constructor(private readonly cfg: ProviderConfig) {}
 
   private get headers(): Record<string, string> {
-    return { 'x-goog-api-key': this.cfg.apiKey };
+    return authHeaders('goog', this.cfg.apiKey, this.cfg.extraHeaders);
   }
 
   async *stream(req: CompletionRequest, onUsage: (u: Usage) => void): AsyncGenerator<string> {
