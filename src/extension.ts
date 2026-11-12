@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { KeyStore, readSettings, SECTION, update } from './config';
 import { InlineProvider } from './completionProvider';
 import { RecentDocs } from './context';
+import { addDocComment } from './docComment';
+import { WorkspaceIndex } from './workspaceIndex';
 import { PROVIDERS } from './providers';
 import { ProviderId } from './providers/types';
 import { Status } from './statusBar';
@@ -11,7 +13,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const keys = new KeyStore(context.secrets);
   const status = new Status();
   const recent = new RecentDocs();
-  const inline = new InlineProvider(keys, status, recent, log);
+  const workspace = new WorkspaceIndex(log);
+  const indexSettings = () => {
+    const s = readSettings();
+    return `${s.crossFileContext && s.workspaceContext}|${s.workspaceMaxFiles}`;
+  };
+  let lastIndexSettings = indexSettings();
+  const startIndex = () => {
+    const s = readSettings();
+    workspace.configure(s.crossFileContext && s.workspaceContext, s.workspaceMaxFiles);
+  };
+  startIndex();
+  const inline = new InlineProvider(keys, status, recent, log, workspace);
   await inline.reload();
 
   const setApiKey = async (id?: ProviderId): Promise<boolean> => {
@@ -156,10 +169,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     log,
     status,
     recent,
+    workspace,
+    vscode.workspace.onDidChangeWorkspaceFolders(() => startIndex()),
     vscode.languages.registerInlineCompletionItemProvider({ pattern: '**' }, inline),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration(SECTION)) {
         inline.reload();
+        if (indexSettings() !== lastIndexSettings) {
+          lastIndexSettings = indexSettings();
+          startIndex();
+        }
       }
     }),
     context.secrets.onDidChange((e) => {
@@ -181,6 +200,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('swiftTab.selectModel', selectModel),
     vscode.commands.registerCommand('swiftTab.selectMode', () => selectMode()),
     vscode.commands.registerCommand('swiftTab.showLog', () => log.show()),
+    vscode.commands.registerTextEditorCommand('swiftTab.addDocComment', (editor) => addDocComment(editor)),
     vscode.commands.registerCommand('swiftTab.accepted', () => {
       status.accepted++;
       status.render();

@@ -42,6 +42,11 @@
         "category": "SwiftTab"
       },
       {
+        "command": "swiftTab.addDocComment",
+        "title": "Add Doc Comment",
+        "category": "SwiftTab"
+      },
+      {
         "command": "swiftTab.selectProvider",
         "title": "Select Provider",
         "category": "SwiftTab"
@@ -269,20 +274,33 @@
         "swiftTab.crossFileContext": {
           "type": "boolean",
           "default": true,
-          "description": "Include the most relevant snippets from other open files (similarity-ranked).",
+          "description": "Include relevant snippets from other files: open files and, with workspaceContext, the whole workspace.",
           "order": 15
         },
         "swiftTab.crossFileChars": {
           "type": "number",
-          "default": 3000,
-          "description": "Character budget for cross-file snippets.",
+          "default": 4000,
+          "description": "Character budget for snippets from other files (open files and the workspace index).",
           "order": 16
+        },
+        "swiftTab.workspaceContext": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Index the workspace in memory and add the code most similar to what is around the cursor to the prompt, so suggestions follow patterns the project already uses. Only the chosen snippets are sent to the provider.",
+          "order": 17
+        },
+        "swiftTab.workspaceMaxFiles": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 100,
+          "description": "Maximum number of files the workspace index reads (node_modules, build output and generated files are always skipped).",
+          "order": 18
         },
         "swiftTab.timeoutMs": {
           "type": "number",
           "default": 8000,
           "description": "Abort a request that takes longer than this.",
-          "order": 17
+          "order": 19
         },
         "swiftTab.disabledLanguages": {
           "type": "array",
@@ -295,13 +313,13 @@
             "scminput"
           ],
           "description": "Language IDs where completion is off.",
-          "order": 18
+          "order": 20
         },
         "swiftTab.extraBody": {
           "type": "object",
           "default": {},
           "markdownDescription": "Extra JSON deep-merged into every request body. Examples: Qwen3 / vLLM `{\"chat_template_kwargs\": {\"enable_thinking\": false}}`; Gemini `{\"generationConfig\": {\"thinkingConfig\": {\"thinkingBudget\": 0}}}`; OpenAI reasoning models `{\"reasoning_effort\": \"minimal\"}`.",
-          "order": 19
+          "order": 21
         },
         "swiftTab.extraHeaders": {
           "type": "object",
@@ -310,10 +328,26 @@
           },
           "default": {},
           "description": "Extra HTTP headers sent with every request (e.g. for gateways or proxies). Do not put API keys here; use the Set API Key command.",
-          "order": 20
+          "order": 22
         }
       }
-    }
+    },
+    "menus": {
+      "editor/context": [
+        {
+          "command": "swiftTab.addDocComment",
+          "when": "editorTextFocus && !editorReadonly",
+          "group": "1_modification@90"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "swiftTab.addDocComment",
+        "key": "ctrl+alt+d",
+        "when": "editorTextFocus && !editorReadonly"
+      }
+    ]
   },
   "scripts": {
     "compile": "tsc -p .",

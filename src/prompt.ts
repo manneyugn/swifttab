@@ -148,3 +148,75 @@ export function dropLeadingIndent(text: string, indent: string): string {
   }
   return text.slice(i);
 }
+
+export type DocStyle =
+  | { kind: 'block' } //            /** ... */ (JSDoc, Javadoc, KDoc, PHPDoc, Doxygen)
+  | { kind: 'docstring' } //        Python """...""" inside the body
+  | { kind: 'line'; marker: string; withName?: boolean }; // /// (Rust, C#, Swift), // Name (Go), # (Ruby)
+
+const BLOCK_DOC = new Set([
+  'javascript', 'typescript', 'javascriptreact', 'typescriptreact', 'java', 'kotlin', 'scala', 'groovy',
+  'php', 'c', 'cpp', 'objective-c', 'objective-cpp', 'cuda-cpp', 'dart', 'vue', 'svelte',
+]);
+const TRIPLE_SLASH = new Set(['rust', 'csharp', 'swift', 'fsharp', 'zig']);
+
+/** The conventional doc-comment style for a VS Code language ID. */
+export function docStyle(language: string): DocStyle {
+  if (language === 'python') {
+    return { kind: 'docstring' };
+  }
+  if (BLOCK_DOC.has(language)) {
+    return { kind: 'block' };
+  }
+  if (TRIPLE_SLASH.has(language)) {
+    return { kind: 'line', marker: '///' };
+  }
+  if (language === 'go') {
+    return { kind: 'line', marker: '//', withName: true };
+  }
+  if (language === 'lua') {
+    return { kind: 'line', marker: '---' };
+  }
+  if (language === 'haskell') {
+    return { kind: 'line', marker: '-- |' };
+  }
+  const c = commentLine(language, '');
+  return { kind: 'line', marker: c.replace(/\s+$/, '').replace(/<!--\s*-->/, '<!--') };
+}
+
+export interface DocInsertion {
+  /** Text to insert at the start of `line`. */
+  text: string;
+  /** Cursor position after inserting, relative to `line`. */
+  cursorLine: number;
+  cursorChar: number;
+}
+
+/**
+ * The comment skeleton to insert: the model then fills it in as an inline suggestion.
+ * `indent` is the declaration's indentation (for docstrings: the body's indentation).
+ */
+export function docSkeleton(style: DocStyle, indent: string, name = ''): DocInsertion {
+  switch (style.kind) {
+    case 'block':
+      return { text: `${indent}/**\n${indent} * \n${indent} */\n`, cursorLine: 1, cursorChar: indent.length + 3 };
+    case 'docstring':
+      return { text: `${indent}"""\n${indent}"""\n`, cursorLine: 0, cursorChar: indent.length + 3 };
+    case 'line': {
+      const start = `${indent}${style.marker} ${style.withName && name ? `${name} ` : ''}`;
+      return { text: `${start}\n`, cursorLine: 0, cursorChar: start.length };
+    }
+  }
+}
+
+/** Whether the lines just above a declaration already hold a doc comment. */
+export function hasDocAbove(style: DocStyle, above: string | undefined): boolean {
+  const t = (above ?? '').trim();
+  if (style.kind === 'block') {
+    return t.endsWith('*/');
+  }
+  if (style.kind === 'line') {
+    return t.startsWith(style.marker);
+  }
+  return false;
+}

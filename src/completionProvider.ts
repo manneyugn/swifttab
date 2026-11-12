@@ -7,6 +7,7 @@ import { createProvider } from './providers';
 import { CompletionProvider } from './providers/types';
 import { EngineInput, generate } from './engine';
 import { Status } from './statusBar';
+import { WorkspaceIndex } from './workspaceIndex';
 
 function sleep(ms: number, token: vscode.CancellationToken): Promise<boolean> {
   return new Promise((resolve) => {
@@ -77,7 +78,8 @@ export class InlineProvider implements vscode.InlineCompletionItemProvider {
     private readonly keys: KeyStore,
     private readonly status: Status,
     private readonly recent: RecentDocs,
-    private readonly log: vscode.LogOutputChannel
+    private readonly log: vscode.LogOutputChannel,
+    private readonly workspace?: WorkspaceIndex
   ) {}
 
   /** Re-reads settings and the API key; call after any change. */
@@ -225,7 +227,15 @@ export class InlineProvider implements vscode.InlineCompletionItemProvider {
     // 4. New request. Whatever was in flight can no longer be used.
     this.pending?.ctrl.abort();
     const ctx = s.crossFileContext
-      ? withExtra(gatherContext(doc, pos, s.maxPrefixChars, s.maxSuffixChars, s.crossFileChars, this.recent), extra)
+      ? withExtra(gatherContext(
+          doc,
+          pos,
+          s.maxPrefixChars,
+          s.maxSuffixChars,
+          s.crossFileChars,
+          this.recent,
+          s.workspaceContext ? this.workspace?.index : undefined
+        ), extra)
       : cheap;
     const p = this.start(uri, ctx, postOpts);
     const final = await untilCancelled(p.done, token);

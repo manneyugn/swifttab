@@ -23,6 +23,8 @@ export interface Settings {
   maxSuffixChars: number;
   crossFileContext: boolean;
   crossFileChars: number;
+  workspaceContext: boolean;
+  workspaceMaxFiles: number;
   timeoutMs: number;
   disabledLanguages: string[];
   suggestAfterAccept: boolean;
@@ -56,7 +58,9 @@ export function readSettings(): Settings {
     maxPrefixChars: c.get('maxPrefixChars', 8000),
     maxSuffixChars: c.get('maxSuffixChars', 2000),
     crossFileContext: c.get('crossFileContext', true),
-    crossFileChars: c.get('crossFileChars', 3000),
+    crossFileChars: c.get('crossFileChars', 4000),
+    workspaceContext: c.get('workspaceContext', true),
+    workspaceMaxFiles: c.get('workspaceMaxFiles', 5000),
     timeoutMs: c.get('timeoutMs', 8000),
     disabledLanguages: c.get<string[]>('disabledLanguages', []),
     suggestAfterAccept: c.get('suggestAfterAccept', true),

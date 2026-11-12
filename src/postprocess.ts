@@ -27,9 +27,35 @@ export function indentWidth(line: string): number {
  */
 const MIDLINE_OK = /^\s*[)>}\]"'`]*\s*[:{;,]?\s*$/;
 
+export type CommentKind = 'block' | 'docstring' | 'line';
+
+/** What kind of comment the cursor line is in, judging by the text before the cursor. */
+export function commentContext(linePrefix: string): CommentKind | undefined {
+  if (/^\s*\/\*/.test(linePrefix) && !linePrefix.includes('*/')) {
+    return 'block';
+  }
+  if (/^\s*\*(\s|$)/.test(linePrefix) && !linePrefix.includes('*/')) {
+    return 'block';
+  }
+  if (/^\s*[rRbBuU]?("""|''')/.test(linePrefix) && (linePrefix.match(/"""|'''/g) ?? []).length === 1) {
+    return 'docstring';
+  }
+  if (/^\s*(\/\/|#|--)/.test(linePrefix)) {
+    return 'line';
+  }
+  return undefined;
+}
+
+/** A comment line with nothing written yet (`/**`, ` * `, `"""`): the place to write a whole comment. */
+export function isEmptyCommentLine(linePrefix: string): boolean {
+  return /^\s*(\/\*\*?|\*|[rRbBuU]?("""|'''))\s*$/.test(linePrefix);
+}
+
 /** Whether to ask for a completion at all at this cursor position. */
 export function shouldSkip(linePrefix: string, lineSuffix: string): boolean {
-  if (!MIDLINE_OK.test(lineSuffix)) {
+  // `/** █ */` and `"""█"""` (auto-closed comments) are fine places to complete.
+  const closesComment = /^\s*(\*\/|"""|''')\s*$/.test(lineSuffix) && commentContext(linePrefix) !== undefined;
+  if (!MIDLINE_OK.test(lineSuffix) && !closesComment) {
     return true;
   }
   // Very long lines (minified code, data) are not worth a request.
@@ -42,6 +68,11 @@ export function shouldSkip(linePrefix: string, lineSuffix: string): boolean {
 export function decideMultiline(mode: 'auto' | 'always' | 'never', linePrefix: string, lineSuffix: string): boolean {
   if (mode === 'never') {
     return false;
+  }
+  // An empty doc-comment line with nothing after it: write the whole comment.
+  const kind = commentContext(linePrefix);
+  if ((kind === 'block' || kind === 'docstring') && isEmptyCommentLine(linePrefix) && lineSuffix.trim() === '') {
+    return true;
   }
   const restIsClosers = CLOSERS_ONLY.test(lineSuffix);
   if (mode === 'always') {
@@ -114,7 +145,8 @@ function removeEcho(text: string, linePrefix: string): string {
  */
 export function normalizeStart(text: string, linePrefix: string, multiline: boolean): string {
   const lp = linePrefix.trimStart();
-  if (lp.length >= 3) {
+  // Comment markers are short, but a model repeating ` * ` or `# ` is still an echo.
+  if (lp.length >= 3 || /^(\*|\/\/\/?|#|--)\s*$/.test(lp)) {
     const first = text.trimStart();
     if (first.startsWith(lp) && !text.startsWith('\n')) {
       text = first.slice(lp.length);
@@ -162,8 +194,11 @@ export function postProcess(raw: string, opts: PostOptions): PostResult {
   text = normalizeStart(text, opts.linePrefix, opts.multiline);
 
   let lines = text.split('\n');
+  const comment = commentContext(opts.linePrefix);
 
-  if (!opts.multiline) {
+  if (opts.multiline && (comment === 'block' || comment === 'docstring')) {
+    ({ lines, truncated } = commentLines(lines, comment, opts));
+  } else if (!opts.multiline) {
     if (lines.length > 1) {
       truncated = true;
     }
@@ -242,6 +277,45 @@ export function postProcess(raw: string, opts: PostOptions): PostResult {
     return { text: '', truncated };
   }
   return { text, truncated };
+}
+
+/**
+ * Lines of a doc comment being written: stop at its end, and never run on into code.
+ * The closing marker is kept unless the file already has it on the next line.
+ */
+function commentLines(lines: string[], kind: CommentKind, opts: PostOptions): { lines: string[]; truncated: boolean } {
+  const nextSuffixLine = firstNonEmptyLineAfterCursorLine(opts.suffix)?.trim() ?? '';
+  const closer = kind === 'block' ? /\*\// : /"""|'''/;
+  const closerAhead = kind === 'block' ? nextSuffixLine.startsWith('*/') : /^("""|''')$/.test(nextSuffixLine);
+  const kept: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const t = line.trim();
+    if (closer.test(line)) {
+      if (!closerAhead) {
+        kept.push(line);
+      } else {
+        // The file already closes the comment: keep only the text before the model's closer.
+        const before = line.replace(kind === 'block' ? /\s*\*\/.*$/ : /\s*("""|''').*$/, '');
+        if (before.trim() !== '' && before.trim() !== '*') {
+          kept.push(before);
+        }
+      }
+      return { lines: kept, truncated: i < lines.length - 1 };
+    }
+    // A JSDoc-style comment line starts with `*`; anything else is code.
+    if (kind === 'block' && i > 0 && t !== '' && !t.startsWith('*')) {
+      return { lines: kept, truncated: true };
+    }
+    if (nextSuffixLine && i > 0 && t === nextSuffixLine) {
+      return { lines: kept, truncated: true };
+    }
+    if (kept.length >= opts.maxLines) {
+      return { lines: kept, truncated: true };
+    }
+    kept.push(line);
+  }
+  return { lines: kept, truncated: false };
 }
 
 /** Tabby's repetition check: a short pattern repeated many times at the end. */

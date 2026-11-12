@@ -191,3 +191,60 @@ test('cross-file snippets reach the model', async () => {
   assert.deepEqual(model.request!.snippets, snippets);
   assert.equal(model.request!.filePath, 'src/example.ts');
 });
+
+// ── Doc comments ────────────────────────────────────────────────────────────────
+
+const addFn = 'export function add(a: number, b: number): number {\n  return a + b;\n}\n';
+
+test('doc: fills a JSDoc skeleton and stops before the existing */', async () => {
+  const answer =
+    'Adds two numbers.\n * @param a - First number.\n * @param b - Second number.\n * @returns The sum.\n */\nexport function add(';
+  const { text, input, model } = await suggest(`/**\n * █\n */\n${addFn}`, answer);
+  assert.equal(input.multiline, true, 'an empty comment line writes the whole comment');
+  assert.equal(text, 'Adds two numbers.\n * @param a - First number.\n * @param b - Second number.\n * @returns The sum.');
+  assert.ok(model.chunksSent < totalChunks(answer), 'stream stops at the end of the comment');
+});
+
+test('doc: a repeated " * " at the start is removed', async () => {
+  const { text } = await suggest(`/**\n * █\n */\n${addFn}`, ' * Adds two numbers.\n * @returns The sum.\n */');
+  assert.equal(text, 'Adds two numbers.\n * @returns The sum.');
+});
+
+test('doc: after typing /** the closing */ is written too', async () => {
+  const { text } = await suggest(`/**█\n${addFn}`, '\n * Adds two numbers.\n */\nexport function add(');
+  assert.equal(text, '\n * Adds two numbers.\n */');
+});
+
+test('doc: a comment that runs into code is cut at the code', async () => {
+  const { text } = await suggest(`/**\n * █\n */\n${addFn}`, 'Adds two numbers.\nexport function add(a, b) {');
+  assert.equal(text, 'Adds two numbers.');
+});
+
+test('doc: one-line /** █ */ completes inside without a second */', async () => {
+  const { text, input } = await suggest(`/** █ */\n${addFn}`, 'Adds two numbers. */');
+  assert.equal(input.skip, false, 'auto-closed comments still trigger');
+  assert.equal(input.multiline, false);
+  assert.equal(text, 'Adds two numbers.');
+});
+
+test('doc: Python docstring stops before the existing closing quotes', async () => {
+  const source = 'def add(a, b):\n    """█\n    """\n    return a + b\n';
+  const answer =
+    'Return the sum of a and b.\n\n    Args:\n        a: First number.\n        b: Second number.\n    """\n    return a + b\n';
+  const { text, input } = await suggest(source, answer, { language: 'python', filePath: 'calc.py' });
+  assert.equal(input.multiline, true);
+  assert.equal(text, 'Return the sum of a and b.\n\n    Args:\n        a: First number.\n        b: Second number.');
+});
+
+test('doc: one-line Python docstring keeps only the text', async () => {
+  const source = 'def add(a, b):\n    """█\n    """\n    return a + b\n';
+  const { text } = await suggest(source, 'Return the sum of a and b."""', { language: 'python' });
+  assert.equal(text, 'Return the sum of a and b.');
+});
+
+test('doc: Go line comment completes the sentence after the name', async () => {
+  const source = '// Add █\nfunc Add(a, b int) int {\n\treturn a + b\n}\n';
+  const { text, input } = await suggest(source, 'returns the sum of a and b.\nfunc Add(a, b int) int {', { language: 'go' });
+  assert.equal(input.multiline, false);
+  assert.equal(text, 'returns the sum of a and b.');
+});

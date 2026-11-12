@@ -61,9 +61,30 @@ These mechanics are borrowed from Copilot, Continue, Cody, Tabby and llama.vscod
 - **Suggest widget.** When the IntelliSense list is open, the ghost text continues the selected item.
 - **Single or multi-line.** Whole blocks on empty lines and after `{`, `:`, `=>`, `do`…; single lines elsewhere. A block stops when indentation leaves it, when it would repeat the code below the cursor, or after `maxLines`.
 - **Streaming with early stop.** The request is cut off as soon as the line or block is complete, so you don't wait for (or pay for) extra tokens.
-- **Prompt.** The file path and the most relevant windows from recently opened or edited files, ranked by shared identifiers. Indentation on a blank line is taken out of the FIM prompt (models tokenize it badly) and put back afterwards.
+- **Prompt.** The file path, the most relevant windows from recently opened or edited files, and similar code from the workspace index. Indentation on a blank line is taken out of the FIM prompt (models tokenize it badly) and put back afterwards.
 - **Clean output.** Strips leaked special tokens, code fences and duplicated closing brackets. Drops repetition loops, copies of the line above and text that already follows the cursor.
 - **Status bar.** Spinner while loading, warning on errors, and a tooltip with requests, acceptances, cache hits, reused streams, token usage and median latency.
+
+## Doc comments
+
+- **While typing:** open a doc comment above a function (`/**` + Enter, an empty ` * ` line, or `"""` in Python) and the suggestion writes the whole comment from the code below: summary, `@param`, `@returns`, Args… It stops at the end of the comment and never runs on into code.
+- **Command:** **SwiftTab: Add Doc Comment** (`Ctrl+Alt+D`, or right-click in the editor) finds the function, method or class at the cursor and inserts the right skeleton for the language. The comment appears as ghost text; press `Tab` to accept it.
+
+| Languages | Style |
+|---|---|
+| TypeScript, JavaScript, Java, Kotlin, PHP, C/C++, Dart, Scala | `/** … */` |
+| Python | `"""…"""` docstring inside the body |
+| Rust, C#, Swift, F#, Zig | `///` |
+| Go | `// Name …` |
+| Ruby, shell, others | the language's line comment |
+
+## Similar code from your workspace
+
+SwiftTab keeps an in-memory index of the workspace. It splits files into 40-line windows and ranks them with BM25 over identifiers. For each completion, the code most similar to the lines around the cursor goes into the prompt, so suggestions follow the patterns your project already uses: its helpers, error handling, naming and query style. For example, a new route handler is written the way your other route handlers are.
+
+- About 0.8 s and 50 MB to index 2,500 files; searches take a few milliseconds. The index updates when files are saved, created or deleted.
+- `node_modules`, build output, minified and generated files, and files over 200 KB are skipped.
+- Nothing leaves your machine except the few snippets chosen for a completion, sent to the provider you configured. Turn it off with `swiftTab.workspaceContext`.
 
 ## Privacy & keys
 
@@ -89,7 +110,9 @@ Everything is in the regular Settings UI: search `swiftTab`, or use **Open setti
 | `swiftTab.maxTokens` | `256` | Single-line requests are capped at 96 |
 | `swiftTab.maxLines` | `40` | |
 | `swiftTab.maxPrefixChars` / `maxSuffixChars` | `8000` / `2000` | Context window around the cursor |
-| `swiftTab.crossFileContext` / `crossFileChars` | `true` / `3000` | |
+| `swiftTab.crossFileContext` / `crossFileChars` | `true` / `4000` | Snippets from open files and the workspace index |
+| `swiftTab.workspaceContext` | `true` | Index the workspace for similar code |
+| `swiftTab.workspaceMaxFiles` | `5000` | |
 | `swiftTab.timeoutMs` | `8000` | |
 | `swiftTab.extraBody` | `{}` | Deep-merged into every request body |
 | `swiftTab.extraHeaders` | `{}` | Extra HTTP headers (gateways, proxies) |
@@ -110,6 +133,9 @@ Press `F5` in VS Code to run it in an Extension Development Host.
 src/
   extension.ts           commands, status menu, activation
   completionProvider.ts  VS Code glue: debounce → cache → reuse in-flight request → engine
+  codeIndex.ts           workspace index: windows + BM25 search (pure, tested)
+  workspaceIndex.ts      scans and watches the workspace to keep the index current
+  docComment.ts          Add Doc Comment command
   engine.ts              the pipeline without vscode: prompt fixes, streaming, early stop (tested)
   context.ts             prefix/suffix windows, cross-file snippets, comment syntax
   postprocess.ts         multi-line logic, block-end detection, cleanup (pure, tested)

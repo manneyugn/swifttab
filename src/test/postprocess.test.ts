@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { decideMultiline, isRepetitive, postProcess, shouldSkip } from '../postprocess';
-import { buildFimPrompt, dropLeadingIndent, inferFimTemplate, stripSpecialTokens, trailingIndent } from '../prompt';
+import { buildFimPrompt, docSkeleton, docStyle, dropLeadingIndent, hasDocAbove, inferFimTemplate, stripSpecialTokens, trailingIndent } from '../prompt';
 import { TypeAhead, LruCache } from '../cache';
 import { topSnippets } from '../similarity';
 
@@ -148,4 +148,19 @@ test('indentation is moved out of the FIM prompt and stripped from output', () =
   assert.equal(dropLeadingIndent('    if n < 2:', '    '), 'if n < 2:');
   assert.equal(dropLeadingIndent('  if', '    '), 'if');
   assert.equal(dropLeadingIndent('\n    x', '    '), '\n    x');
+});
+
+test('doc comment styles per language', () => {
+  assert.deepEqual(docStyle('typescript'), { kind: 'block' });
+  assert.deepEqual(docStyle('java'), { kind: 'block' });
+  assert.deepEqual(docStyle('python'), { kind: 'docstring' });
+  assert.deepEqual(docStyle('rust'), { kind: 'line', marker: '///' });
+  assert.deepEqual(docStyle('go'), { kind: 'line', marker: '//', withName: true });
+  assert.deepEqual(docStyle('ruby'), { kind: 'line', marker: '#' });
+  assert.deepEqual(docSkeleton({ kind: 'block' }, '  '), { text: '  /**\n   * \n   */\n', cursorLine: 1, cursorChar: 5 });
+  assert.deepEqual(docSkeleton({ kind: 'docstring' }, '    '), { text: '    """\n    """\n', cursorLine: 0, cursorChar: 7 });
+  assert.deepEqual(docSkeleton(docStyle('go'), '', 'Add'), { text: '// Add \n', cursorLine: 0, cursorChar: 7 });
+  assert.equal(hasDocAbove({ kind: 'block' }, ' */'), true);
+  assert.equal(hasDocAbove({ kind: 'block' }, '}'), false);
+  assert.equal(hasDocAbove(docStyle('rust'), '/// Adds.'), true);
 });

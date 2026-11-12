@@ -7,6 +7,7 @@
 // Env: SWIFTTAB_PROVIDER (default openaiCompatible), SWIFTTAB_BASE_URL, SWIFTTAB_MODEL,
 //      SWIFTTAB_MODE (auto|fim|chat), SWIFTTAB_FIM_TEMPLATE (auto|suffix|qwen|…),
 //      SWIFTTAB_API_KEY, SWIFTTAB_EXTRA_BODY (JSON), SWIFTTAB_TIMEOUT_MS (default 30000).
+import { CodeIndex, familyOfPath } from '../codeIndex';
 import { complete, CursorOptions, fromCursor } from '../engine';
 import { createProvider, PROVIDERS, resolveFimTemplate, resolveMode } from '../providers';
 import { FimTemplate, ProviderId, ProviderMode } from '../providers/types';
@@ -15,6 +16,8 @@ interface Scenario {
   name: string;
   source: string;
   opts?: CursorOptions;
+  /** Other files in the "project": indexed, and the best matches go into the prompt like in the editor. */
+  workspace?: Record<string, string>;
   /** What a good suggestion must look like. */
   expect: (text: string) => boolean;
   hint: string;
@@ -105,6 +108,46 @@ const SCENARIOS: Scenario[] = [
     expect: (t) => /^\n/.test(t) && /displayName/.test(t),
     hint: 'uses displayName from the other file',
   },
+
+  // ── Patterns from the workspace index ──
+  {
+    name: 'ws-route-pattern',
+    source:
+      "import { Router } from 'express';\nimport { db } from '../db';\nimport { ok, fail } from '../http/reply';\nimport { withAudit } from '../audit';\n\nexport const invoicesRouter = Router();\n\ninvoicesRouter.get('/:id', async (req, res) => {█\n});\n",
+    opts: { filePath: 'src/routes/invoices.ts' },
+    workspace: {
+      'src/routes/customers.ts':
+        "import { Router } from 'express';\nimport { db } from '../db';\nimport { ok, fail } from '../http/reply';\nimport { withAudit } from '../audit';\n\nexport const customersRouter = Router();\n\ncustomersRouter.get('/:id', async (req, res) => {\n  const row = await db.customers.byId(req.params.id);\n  if (!row) {\n    return fail(res, 404, 'customer_not_found');\n  }\n  return ok(res, withAudit(req, row));\n});\n",
+      'src/utils/strings.ts': 'export const slug = (s: string) => s.toLowerCase().replace(/\\W+/g, \'-\');\n',
+    },
+    expect: (t) => /db\.invoices\.byId/.test(t) && /fail\(res,\s*404/.test(t) && /ok\(res/.test(t),
+    hint: "follows customers.ts: db.invoices.byId, fail(res, 404, …), ok(res, …)",
+  },
+
+  // ── Doc comments ──
+  {
+    name: 'doc-jsdoc',
+    source:
+      '/**\n * █\n */\nexport function clamp(value: number, min: number, max: number): number {\n  return Math.min(Math.max(value, min), max);\n}\n',
+    expect: (t) =>
+      /clamp|range|between|bound|limit/i.test(t) && !/\*\//.test(t) && t.split('\n').slice(1).every((l) => l.trim().startsWith('*') || !l.trim()),
+    hint: 'describes clamping; only comment lines, no second */',
+  },
+  {
+    name: 'doc-python',
+    source:
+      'def chunk(items, size):\n    """█\n    """\n    return [items[i:i + size] for i in range(0, len(items), size)]\n',
+    opts: { language: 'python', filePath: 'util.py' },
+    expect: (t) => /(chunk|split|size|group|batch)/i.test(t) && !/"""/.test(t) && !/return \[/.test(t),
+    hint: 'describes splitting into chunks; no closing quotes, no code',
+  },
+  {
+    name: 'doc-go',
+    source: 'package mathx\n\n// Clamp █\nfunc Clamp(v, lo, hi int) int {\n\tif v < lo {\n\t\treturn lo\n\t}\n\tif v > hi {\n\t\treturn hi\n\t}\n\treturn v\n}\n',
+    opts: { language: 'go', filePath: 'mathx/clamp.go' },
+    expect: (t) => oneLine(t) && /(lo|hi|range|between|limit|bound)/i.test(t),
+    hint: 'one line describing the clamp',
+  },
 ];
 
 function env(name: string, fallback = ''): string {
@@ -145,6 +188,14 @@ async function main(): Promise<void> {
   for (const sc of SCENARIOS.filter((s) => s.name.includes(filter))) {
     ran++;
     const input = { ...fromCursor(sc.source, sc.opts), model, maxTokens: 160 };
+    if (sc.workspace) {
+      const idx = new CodeIndex();
+      for (const [p, text] of Object.entries(sc.workspace)) {
+        idx.upsert(p, text);
+      }
+      const family = familyOfPath(input.filePath) ?? 'js';
+      input.snippets = idx.search(input.prefix.slice(-1500), { family, budgetChars: 3000 });
+    }
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     const started = Date.now();

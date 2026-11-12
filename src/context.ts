@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { topSnippets, Snippet } from './similarity';
+import { CodeIndex, familyOfLanguage } from './codeIndex';
 
 const FAMILIES: string[][] = [
   ['typescript', 'typescriptreact', 'javascript', 'javascriptreact', 'vue', 'svelte'],
@@ -89,7 +90,8 @@ export function gatherContext(
   maxPrefix: number,
   maxSuffix: number,
   crossFileChars: number,
-  recent: RecentDocs | undefined
+  recent: RecentDocs | undefined,
+  index?: CodeIndex
 ): EditorContext {
   const offset = doc.offsetAt(pos);
   const text = doc.getText();
@@ -112,13 +114,21 @@ export function gatherContext(
 
   let snippets: Snippet[] = [];
   if (recent && crossFileChars > 0) {
-    // The ~20 lines around the cursor are the best query for "what is relevant elsewhere".
+    // The ~40 lines before the cursor are the best query for "what is relevant elsewhere".
     const query = text.slice(Math.max(0, offset - 1500), offset);
     const docs = recent.documents(doc.uri, doc.languageId).map((d) => ({
       path: vscode.workspace.asRelativePath(d.uri, false),
       text: d.getText(),
     }));
-    snippets = topSnippets(query, docs, crossFileChars);
+    // Open/recent files first (fresh, likely related), then similar code from the whole workspace.
+    const family = familyOfLanguage(doc.languageId);
+    const openBudget = index?.size && family ? Math.floor(crossFileChars / 2) : crossFileChars;
+    snippets = topSnippets(query, docs, openBudget);
+    if (index?.size && family) {
+      const used = snippets.reduce((n, s) => n + s.text.length, 0);
+      const excludePaths = new Set([relPath, ...snippets.map((s) => s.path)]);
+      snippets.push(...index.search(query, { family, budgetChars: crossFileChars - used, excludePaths }) as Snippet[]);
+    }
   }
 
   return {
