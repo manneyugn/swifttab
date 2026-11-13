@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { cursorLanguage } from './embedded';
 import { docSkeleton, docStyle, hasDocAbove } from './prompt';
 
 const DOCUMENTABLE = new Set([
@@ -58,7 +59,7 @@ function signatureEnd(doc: vscode.TextDocument, start: number): number {
 export async function addDocComment(editor: vscode.TextEditor): Promise<void> {
   const doc = editor.document;
   const pos = editor.selection.active;
-  const style = docStyle(doc.languageId);
+  const style = docStyle(cursorLanguage(doc.languageId, doc.getText(new vscode.Range(0, 0, pos.line, pos.character))).language);
   const sym = await enclosingSymbol(doc, pos);
   const declLine = sym ? sym.selectionRange.start.line : pos.line;
   // Decorators/attributes belong below the comment: start from the symbol's full range.

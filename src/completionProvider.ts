@@ -162,6 +162,10 @@ export class InlineProvider implements vscode.InlineCompletionItemProvider {
     }
 
     const cheap = withExtra(gatherContext(doc, pos, s.maxPrefixChars, s.maxSuffixChars, 0, undefined), extra);
+    // A disabled language embedded in another file (e.g. a ```json fence in Markdown) is skipped too.
+    if (cheap.cursorLanguage && s.disabledLanguages.includes(cheap.cursorLanguage)) {
+      return undefined;
+    }
     const uri = doc.uri.toString();
     const item = (text: string) => {
       if (!sel) {
@@ -189,6 +193,7 @@ export class InlineProvider implements vscode.InlineCompletionItemProvider {
       maxLines: s.maxLines,
       chatMode: this.provider.mode === 'chat',
       prevLine: pos.line > 0 ? doc.lineAt(pos.line - 1).text : undefined,
+      regionEnd: cheap.regionEnd,
     };
 
     // 1. Instant answers: typing through the suggestion on screen, or a spot we've seen.
@@ -288,6 +293,8 @@ export class InlineProvider implements vscode.InlineCompletionItemProvider {
       prefix: ctx.rawPrefix,
       suffix: ctx.suffix,
       language: ctx.language,
+      cursorLanguage: ctx.cursorLanguage,
+      regionEnd: ctx.regionEnd,
       filePath: ctx.relPath,
       repoName: ctx.repoName,
       snippets: ctx.snippets,

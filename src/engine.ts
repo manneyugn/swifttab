@@ -1,5 +1,6 @@
 // The completion pipeline without any vscode dependency: prompt adjustments, streaming with
 // early stop, and post-processing. Used by the editor provider, the tests and the live eval.
+import { cursorLanguage } from './embedded';
 import { decideMultiline, PostOptions, postProcess, shouldSkip } from './postprocess';
 import { dropLeadingIndent, stripSpecialTokens, trailingIndent } from './prompt';
 import { CompletionProvider, Snippet, Usage } from './providers/types';
@@ -10,6 +11,10 @@ export interface EngineInput {
   /** Everything after the cursor. */
   suffix: string;
   language: string;
+  /** Language at the cursor when it differs from the file's (a <script> block, a ``` fence…). */
+  cursorLanguage?: string;
+  /** End of that embedded region; completions stop before it. */
+  regionEnd?: string;
   filePath: string;
   repoName: string;
   snippets: Snippet[];
@@ -32,6 +37,7 @@ export function postOptions(i: EngineInput, chatMode: boolean): PostOptions {
     maxLines: i.maxLines,
     chatMode,
     prevLine: i.prevLine,
+    regionEnd: i.regionEnd,
   };
 }
 
@@ -60,6 +66,7 @@ export async function generate(
       prefix: indent ? i.prefix.slice(0, -indent.length) : i.prefix,
       suffix: i.suffix,
       language: i.language,
+      cursorLanguage: i.cursorLanguage,
       filePath: i.filePath,
       repoName: i.repoName,
       snippets: i.snippets,
@@ -111,6 +118,8 @@ export const CURSOR = '█';
 
 export interface CursorOptions {
   language?: string;
+  /** Detect embedded languages (script blocks, code fences) the way the editor does. Default true. */
+  detectEmbedded?: boolean;
   filePath?: string;
   multiline?: 'auto' | 'always' | 'never';
   model?: string;
@@ -135,10 +144,14 @@ export function fromCursor(source: string, o: CursorOptions = {}): EngineInput &
   const linePrefix = prefix.slice(lineStart);
   const lineSuffix = lineEnd < 0 ? suffix : suffix.slice(0, lineEnd);
   const lines = prefix.split('\n');
+  const language = o.language ?? 'typescript';
+  const at_ = o.detectEmbedded === false ? undefined : cursorLanguage(language, prefix);
   return {
     prefix,
     suffix,
-    language: o.language ?? 'typescript',
+    language,
+    cursorLanguage: at_?.embedded ? at_.language : undefined,
+    regionEnd: at_?.regionEnd,
     filePath: o.filePath ?? 'src/example.ts',
     repoName: 'example',
     snippets: o.snippets ?? [],

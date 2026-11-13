@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { topSnippets, Snippet } from './similarity';
 import { CodeIndex, familyOfLanguage } from './codeIndex';
+import { cursorLanguage } from './embedded';
 
 const FAMILIES: string[][] = [
   ['typescript', 'typescriptreact', 'javascript', 'javascriptreact', 'vue', 'svelte'],
@@ -76,6 +77,9 @@ export interface EditorContext {
   relPath: string;
   repoName: string;
   language: string;
+  /** Language at the cursor when it is embedded in the file's language (script/style blocks, code fences). */
+  cursorLanguage?: string;
+  regionEnd?: string;
   rawPrefix: string;
   suffix: string;
   linePrefix: string;
@@ -111,17 +115,18 @@ export function gatherContext(
   const line = doc.lineAt(pos.line).text;
   const relPath = vscode.workspace.asRelativePath(doc.uri, false);
   const rawPrefix = text.slice(start, offset);
+  const here = cursorLanguage(doc.languageId, text.slice(0, offset));
 
   let snippets: Snippet[] = [];
   if (recent && crossFileChars > 0) {
     // The ~40 lines before the cursor are the best query for "what is relevant elsewhere".
     const query = text.slice(Math.max(0, offset - 1500), offset);
-    const docs = recent.documents(doc.uri, doc.languageId).map((d) => ({
+    const docs = recent.documents(doc.uri, here.language).map((d) => ({
       path: vscode.workspace.asRelativePath(d.uri, false),
       text: d.getText(),
     }));
     // Open/recent files first (fresh, likely related), then similar code from the whole workspace.
-    const family = familyOfLanguage(doc.languageId);
+    const family = familyOfLanguage(here.language);
     const openBudget = index?.size && family ? Math.floor(crossFileChars / 2) : crossFileChars;
     snippets = topSnippets(query, docs, openBudget);
     if (index?.size && family) {
@@ -135,6 +140,8 @@ export function gatherContext(
     relPath,
     repoName: vscode.workspace.getWorkspaceFolder(doc.uri)?.name ?? vscode.workspace.name ?? '',
     language: doc.languageId,
+    cursorLanguage: here.embedded ? here.language : undefined,
+    regionEnd: here.regionEnd,
     rawPrefix,
     suffix: text.slice(offset, end),
     linePrefix: line.slice(0, pos.character),

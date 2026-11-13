@@ -86,6 +86,16 @@ SwiftTab keeps an in-memory index of the workspace. It splits files into 40-line
 - `node_modules`, build output, minified and generated files, and files over 200 KB are skipped.
 - Nothing leaves your machine except the few snippets chosen for a completion, sent to the provider you configured. Turn it off with `swiftTab.workspaceContext`.
 
+## Mixed-language files
+
+SwiftTab works out which language the cursor is actually in, not just the file's language:
+
+- `<script>` and `<style>` blocks in HTML, Vue, Svelte, Astro and PHP (honouring `lang="ts"`, `lang="scss"`, `type="module"`, JSON scripts…)
+- PHP code inside `<?php … ?>` and the HTML around it
+- fenced code blocks in Markdown and MDX (`` ```python ``, `~~~bash`, `{.rust}`)
+
+That language picks the related open files and workspace snippets, tells chat models what they are writing, chooses the doc-comment style, and is checked against `swiftTab.disabledLanguages`. A suggestion also stops at the end of the block (`</script>`, the closing fence) instead of running on into the surrounding file.
+
 ## Privacy & keys
 
 - Keys are stored with VS Code `SecretStorage` (your OS keychain), never in `settings.json`, and never logged.

@@ -51,6 +51,8 @@ export interface CompletionRequest {
   /** Code after the cursor. */
   suffix: string;
   language: string;
+  /** Language at the cursor when it is embedded in another (a <script> block, a ``` fence…). */
+  cursorLanguage?: string;
   /** Workspace-relative path of the file being edited. */
   filePath: string;
   /** Workspace folder name (used by repo-level FIM templates). */

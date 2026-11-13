@@ -100,6 +100,8 @@ export interface PostOptions {
   chatMode: boolean;
   /** The line above the cursor line, to reject completions that just repeat it. */
   prevLine?: string;
+  /** End of the embedded region the cursor is in (`</script>`, a closing ``` fence): never complete past it. */
+  regionEnd?: string;
 }
 
 export interface PostResult {
@@ -161,6 +163,24 @@ export function normalizeStart(text: string, linePrefix: string, multiline: bool
   return text;
 }
 
+/** Where the output leaves the embedded region: a closing fence line, or a closing tag anywhere. */
+export function regionEndAt(text: string, regionEnd: string | undefined): number {
+  if (!regionEnd) {
+    return -1;
+  }
+  if (/^(`{3,}|~{3,})$/.test(regionEnd)) {
+    const m = new RegExp(`(^|\\n) {0,3}\\${regionEnd[0]}{${regionEnd.length},}[ \\t]*(\\n|$)`).exec(text);
+    return m ? m.index : -1;
+  }
+  const i = text.toLowerCase().indexOf(regionEnd.toLowerCase());
+  if (i < 0) {
+    return -1;
+  }
+  // Drop the indentation before a closing tag on its own line too.
+  const lineStart = text.lastIndexOf('\n', i - 1) + 1;
+  return text.slice(lineStart, i).trim() === '' ? Math.max(0, lineStart - 1) : i;
+}
+
 /** Longest k so that the end of `text` equals the first k chars of `rest`. */
 function overlapWithRest(text: string, rest: string): number {
   const max = Math.min(text.length, rest.length);
@@ -192,6 +212,11 @@ export function postProcess(raw: string, opts: PostOptions): PostResult {
     text = removeEcho(text, opts.linePrefix);
   }
   text = normalizeStart(text, opts.linePrefix, opts.multiline);
+  const cut = regionEndAt(text, opts.regionEnd);
+  if (cut >= 0) {
+    text = text.slice(0, cut);
+    truncated = true;
+  }
 
   let lines = text.split('\n');
   const comment = commentContext(opts.linePrefix);

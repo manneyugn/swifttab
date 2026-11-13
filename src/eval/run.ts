@@ -124,6 +124,23 @@ const SCENARIOS: Scenario[] = [
     hint: "follows customers.ts: db.invoices.byId, fail(res, 404, …), ok(res, …)",
   },
 
+  // ── Embedded languages ──
+  {
+    name: 'emb-md-python',
+    source: '# Utilities\n\nSplit a list into chunks of a given size:\n\n```python\ndef chunks(items, size):\n    █\n',
+    opts: { language: 'markdown', filePath: 'README.md' },
+    expect: (t) => /(yield|return)/.test(t) && /size/.test(t) && !/```/.test(t) && !/^#/m.test(t),
+    hint: 'a Python body, stopping at the end of the code block',
+  },
+  {
+    name: 'emb-vue-ts',
+    source:
+      '<template>\n  <button @click="increment">{{ count }}</button>\n</template>\n\n<script setup lang="ts">\nimport { ref } from \'vue\';\n\nconst count = ref(0);\nfunction increment() {█\n}\n</script>\n',
+    opts: { language: 'vue', filePath: 'src/Counter.vue' },
+    expect: (t) => /count\.value\s*(\+\+|\+=\s*1|=\s*count\.value\s*\+\s*1)/.test(t) && !/<\/script>/.test(t),
+    hint: 'count.value++ inside the function, no </script>',
+  },
+
   // ── Doc comments ──
   {
     name: 'doc-jsdoc',

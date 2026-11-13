@@ -21,7 +21,8 @@ export function buildChatPrompt(req: CompletionRequest): { system: string; user:
     const files = req.snippets.map((s) => `${s.path}:\n\`\`\`\n${s.text}\n\`\`\``).join('\n\n');
     parts.push(`Relevant code from other files:\n${files}`);
   }
-  parts.push(`File: ${req.filePath} (${req.language})\n\n${req.prefix}${CURSOR}${req.suffix}`);
+  const lang = req.cursorLanguage ? `${req.language}; the cursor is in an embedded ${req.cursorLanguage} block` : req.language;
+  parts.push(`File: ${req.filePath} (${lang})\n\n${req.prefix}${CURSOR}${req.suffix}`);
   return { system, user: parts.join('\n\n') };
 }
 
